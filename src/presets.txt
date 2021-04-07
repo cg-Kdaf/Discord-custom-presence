@@ -1,0 +1,11 @@
+# Icon;id ; name
+sunbathing ; 829001265307582524 ; Chill
+eating ; 829006095271854170 ; Eating
+gaming ; 829005855244288041 ; Game
+hangingout ; 829005662456643635 ; Hanging out
+homeworking ; 829005564289613884 ; Homeworks
+music ; 829006445935591505 ; Music
+watching ; 829005730530721796 ; Whatching
+wrench ; 829343188283818036 ; Working
+mountain-bike ; 829343347994001479 ; Moutain Bike
+piano ; 829345608846278656 ; Music Production
