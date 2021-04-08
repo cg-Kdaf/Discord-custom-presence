@@ -15,22 +15,31 @@ from PyQt5.QtWidgets import (QApplication,
 from PyQt5.QtGui import QFont, QFontDatabase, QPixmap
 from PyQt5.QtCore import Qt, QTimer, QSize
 from pypresence import Presence
+from time import time as time_time
 import os.path
 
 
-def get_available_presets():
-    '''Return a list of tuple of presets [("title", "index", "absolute/image/path"), ...]'''
-    presets = []
-    preset_file_path = os.path.join(os.path.dirname(__file__), 'presets.txt')
-    with open(preset_file_path, 'r') as presets_file:
-        content = presets_file.read()
-        for preset in content.splitlines()[1:]:
-            if " ;" not in preset:
-                continue
-            image, id, title = preset.split(" ;")
-            image_path = os.path.join(os.path.dirname(__file__), "Images", str(image+".png"))
-            presets.append((title, id, image_path))
-    return presets
+class Data():
+    def __init__(self):
+        self.__prog_dir = os.path.dirname(__file__)
+        self.presets = []
+
+    def refresh_presets(self):
+        factory_preset_path = os.path.join(self.__prog_dir, 'presets.txt')
+        self.__get_presets_from_file(factory_preset_path)
+        # user_presets = os.path.join(self.__prog_dir, 'presets.txt')
+        # self.__get_presets_from_file(user_presets)
+
+    def __get_presets_from_file(self, file_path):
+        '''Return a list of tuple of presets [("title", "index", "absolute/image/path"), ...]'''
+        with open(file_path, 'r') as presets_file:
+            content = presets_file.read()
+            for preset in content.splitlines()[1:]:
+                if " ;" not in preset:
+                    continue
+                image, id, title = preset.split(" ;")
+                image_path = os.path.join(self.__prog_dir, "Images", str(image+".png"))
+                self.presets.append((title, id, image_path))
 
 
 class DCP(QWidget):
@@ -38,9 +47,11 @@ class DCP(QWidget):
         super(DCP, self).__init__()
         self.setWindowTitle("Discord custom presence")
         self.pid = None  # Used for the presence application
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.refreshPresence)
-        self.startPresenceTimer()
+        self.is_refreshing = False
+        self.last_refresh = 0
+        self.presence_timer = QTimer()
+        self.presence_timer.setSingleShot(True)
+        self.presence_timer.timeout.connect(self.refreshPresence)
         self.rpc = {"state": '',
                     "details": '',
                     "start": 0,
@@ -57,31 +68,21 @@ class DCP(QWidget):
                                    "Fonts", "Oswald", "Oswald-VariableFont_wght.ttf"))
 
         self.setStyleSheet("font-family: oswald;")
-        self.preset_info = get_available_presets()
+        self.data = Data()
+        self.data.refresh_presets()
+        self.preset_info = self.data.presets
         self.create_panel()
         self.create_area()
         self.active = None
         self.selected = None
         global_layout = QHBoxLayout()
-        global_layout.setSpacing(0)
+        global_layout.setSpacing(4)
         global_layout.setContentsMargins(0, 0, 0, 0)
         global_layout.addWidget(self.panel)
         global_layout.addWidget(self.area)
         self.setLayout(global_layout)
 
     def create_panel(self):
-        def over():
-            print('test')
-            for item in self.presets:
-                self.preset_list.itemWidget(item).setStyleSheet("""background: #C4C4C4;
-                                                                border: 0px;
-                                                                border-radius: 16px;""")
-            active_item = self.preset_list.selectedItems()[0]
-            active_elt = self.preset_list.itemWidget(active_item)
-            active_elt.setStyleSheet("""background: #C4C4C4;
-                                    border: 4px solid #797979;
-                                    border-radius: 16px;""")
-
         self.panel = QWidget()
         self.panel.setFixedWidth(320)
         self.panel.setStyleSheet("""background-color: #484848;
@@ -95,20 +96,21 @@ class DCP(QWidget):
 
         search = QWidget()
 
-        preset_list = QListWidget()
-        preset_list.setMinimumHeight(200)
-        preset_list.setIconSize(QSize(55, 55))
-        preset_list.setSpacing(4)
-        preset_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
-        preset_list.setStyleSheet("""QListView::item:focus{border:none;}
+        self.preset_list = QListWidget()
+        self.preset_list.setMinimumHeight(200)
+        self.preset_list.setIconSize(QSize(55, 55))
+        self.preset_list.setSpacing(6)
+        self.preset_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.preset_list.setStyleSheet("""QListView::item:focus{border:none;}
                                      QListView::item:over{border:none;}
                                      QListView:over{border:none;}
                                      QListView:focus{border:none;}""")
         self.presets = []
         for preset_info in self.preset_info:
             preset_title = QLabel(preset_info[0])
-            preset_title.setStyleSheet("""border: inherited;
-                                       border-radius: inherited;
+            preset_title.setStyleSheet("""border: 0px;
+                                       border-radius: 0px;
+                                       background: transparent;
                                        color: #000000;""")
             preset_title.setFont(QFont('Oswald', 24))
 
@@ -123,9 +125,11 @@ class DCP(QWidget):
             icon = QLabel()
             icon.setPixmap(QPixmap(preset_info[2]))
             icon.setScaledContents(True)
-            icon.setFixedSize(40, 40)
-            icon.setStyleSheet("border: inherited;")
+            icon.setFixedSize(48, 48)
+            icon.setStyleSheet("border: 0px;background: transparent;padding: 3px")
             layout.setAlignment(Qt.AlignLeft)
+            layout.setSpacing(0)
+            layout.setContentsMargins(0, 0, 0, 0)
             layout.addWidget(icon)
             layout.addWidget(preset_title)
             preset.setLayout(layout)
@@ -135,9 +139,8 @@ class DCP(QWidget):
             preset.rpc = self.rpc.copy()
             preset.rpc['large_image'] = preset.info[2].split("/")[-1].split(".")[0]
             self.presets.append(item)
-            preset_list.addItem(item)
-            preset_list.setItemWidget(item, preset)
-        self.preset_list = preset_list
+            self.preset_list.addItem(item)
+            self.preset_list.setItemWidget(item, preset)
         self.preset_list.setCurrentRow(0)
         self.preset_list.selected = self.preset_list.itemWidget(self.preset_list.selectedItems()[0])
         self.preset_list.active = self.preset_list.itemWidget(self.preset_list.selectedItems()[0])
@@ -154,7 +157,7 @@ class DCP(QWidget):
 
     def create_area(self):
         self.area = QWidget()
-        self.area.setStyleSheet("QWidget{background-color: #625B5B;margin-left: 4px solid black;}")
+        self.area.setStyleSheet("QWidget{background-color: #625B5B;}")
         self.area.dynamic_widgets = []
 
         area_layout = QVBoxLayout()
@@ -168,7 +171,7 @@ class DCP(QWidget):
             layout = QHBoxLayout()
             label = QLabel(placeholder)
             label.setFont(QFont('Oswald', 13, QFont.Light))
-            label.setStyleSheet("color: black")
+            label.setStyleSheet("color: black; background: transparent;")
             label.setFixedWidth(120)
             label.setAlignment(Qt.AlignRight)
             lineedit = QLineEdit()
@@ -200,9 +203,10 @@ class DCP(QWidget):
         drop_shadow_effect.setColor(Qt.black)
         header.setGraphicsEffect(drop_shadow_effect)
         header.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        header.setStyleSheet("""background: #C4C4C4;
+        header.setStyleSheet("""QFrame{background: #949494;
                                 border: 4px solid #797979;
-                                border-radius: 60px;""")
+                                border-radius: 60px;}
+                                QFrame:hover{background: #C4C4C4;}""")
         header_layout = QHBoxLayout()
         icon = QLabel()
         icon.setPixmap(QPixmap(self.preset_list.selected.info[2]))
@@ -229,11 +233,16 @@ class DCP(QWidget):
 
         self.area.setLayout(area_layout)
 
-    def startPresenceTimer(self):
-        self.timer.start(15 * 1000)  # Can only update presence every 15 seconds
-
-    def endPresenceTimer(self):
-        self.timer.stop()
+    def refreshPresenceSignal(self):
+        if self.is_refreshing:
+            return
+        self.is_refreshing = True
+        if time_time() - self.last_refresh < 15:
+            sleeping_time = int(15 - (time_time() - self.last_refresh))
+            self.presence_timer.start(sleeping_time*1000)
+        else:
+            self.refreshPresence()
+        self.last_refresh = time_time()
 
     def refreshPresence(self):
         if self.pid != self.preset_list.active.info[1]:
@@ -248,7 +257,6 @@ class DCP(QWidget):
                 real_rpc[prop] = self.preset_list.active.rpc[prop]
             else:
                 real_rpc[prop] = None
-        print(real_rpc)
         self.RPC.update(state=real_rpc["state"],
                         details=real_rpc['details'],
                         start=real_rpc["start"],
@@ -259,10 +267,12 @@ class DCP(QWidget):
                         small_text=real_rpc["small_text"],
                         party_size=real_rpc["party_size"],
                         buttons=real_rpc["buttons"])
+        self.is_refreshing = False
 
     def change_active(self, item):
         self.preset_list.active = self.preset_list.itemWidget(item)
         self.refresh_presets()
+        self.refreshPresenceSignal()
 
     def change_selected(self, item):
         self.preset_list.selected = self.preset_list.itemWidget(item)
@@ -271,15 +281,21 @@ class DCP(QWidget):
 
     def refresh_presets(self):
         for item in self.presets:
-            self.preset_list.itemWidget(item).setStyleSheet("""background: #C4C4C4;
-                                                            border: 4px solid #C4C4C4;
-                                                            border-radius: 20px;""")
-        self.preset_list.selected.setStyleSheet("""background: #C4C4C4;
+            self.preset_list.itemWidget(item).setStyleSheet("""QFrame{background: #949494;
+                                                            border: 4px solid transparent;
+                                                            border-radius: 25px;}
+                                                            QFrame:hover{background: #C4C4C4;}""")
+        self.preset_list.selected.setStyleSheet("""QFrame{background: #A4A4A4;
                                  border: 4px solid #4962D9;
-                                 border-radius: 20px;""")
-        self.preset_list.active.setStyleSheet("""background: #C4C4C4;
+                                 border-radius: 25px;}""")
+        self.preset_list.active.setStyleSheet("""QFrame{background: #94B494;
                                  border: 4px solid #1FEB4C;
-                                 border-radius: 20px;""")
+                                 border-radius: 25px;}
+                                 QFrame:hover{background: #C4C4C4;}""")
+        if self.preset_list.selected == self.preset_list.active:
+            self.preset_list.selected.setStyleSheet("""QFrame{background: #94B494;
+                                 border: 4px solid #4962D9;
+                                 border-radius: 25px;}""")
 
     def refresh_area(self):
         for widget in self.area.dynamic_widgets:
