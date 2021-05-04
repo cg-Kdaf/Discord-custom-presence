@@ -137,7 +137,7 @@ class DCP(QWidget):
             item.setSizeHint(QSize(55, 55))
             preset.info = preset_info
             preset.rpc = self.rpc.copy()
-            preset.rpc['large_image'] = preset.info[2].split("/")[-1].split(".")[0]
+            preset.rpc['large_image'] = os.path.basename(preset.info[2]).split(".")[0]
             self.presets.append(item)
             self.preset_list.addItem(item)
             self.preset_list.setItemWidget(item, preset)
